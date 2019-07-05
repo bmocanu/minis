@@ -24,7 +24,112 @@ import java.util.concurrent.Callable;
  * Profiler is the main class of this tiny code profiler. Allows timing various executions,
  * with aggregated executions and nicely printed reports.
  */
+@SuppressWarnings("unused")
 public class Profiler {
+
+    // ----------------------------------------------------------------------------------------------------
+    // Configuration of the profiler
+    // ----------------------------------------------------------------------------------------------------
+
+    public void setHttpControlOnPort(int port) {
+        if (this.httpControl != null) {
+            httpControl.prepareToStop();
+        }
+
+        httpControl = new HttpControl();
+        httpControl.init(port, this);
+        httpControl.start();
+    }
+
+    public void setReportPrinter(ReportPrinter printer) {
+        this.reportPrinter = printer;
+    }
+
+    // ----------------------------------------------------------------------------------------------------
+    // Action methods
+    // ----------------------------------------------------------------------------------------------------
+
+    /**
+     * Starts a new timing for a piece of code.
+     *
+     * @param point the name of the code point. Can be any string you want, with any format. It just needs to
+     *              be unique to that code point and should stay the same if multiple threads are calling that
+     *              point.
+     * @return a trace to be used either as {@link AutoCloseable} or as a parameter to {@link #end(Trace)}. Can
+     *     also be ignored, because {#end(ExecTrace)} usually knows how to pick it up.
+     */
+    public Trace start(String point) {
+        return start(point, parentTraceStore.get());
+    }
+
+    /**
+     * Starts a new timing for a piece of code, with the name of the code point composed as the name of the
+     * currently executing trace (if any) suffixed with the given string.
+     *
+     * @param pointSuffix the suffix to add to the currently running trace, to form the name of the new trace
+     * @return a trace to be used either as {@link AutoCloseable} or as a parameter to {@link #end(Trace)}. Can
+     *     also be ignored, because {#end(ExecTrace)} usually knows how to pick it up.
+     */
+    public Trace startWithInheritedName(String pointSuffix) {
+        Trace parentTrace = parentTraceStore.get();
+        if (parentTrace != null) {
+            return start(parentTrace.getPoint() + (pointSuffix.startsWith(".") ? "" : ".") + pointSuffix);
+        } else {
+            return start("INHERITED_TRACE_NOT_AVAILABLE." + pointSuffix);
+        }
+    }
+
+    /**
+     * Creates a {@link Callable} decorator, so that when the given Callable is executed, it is automatically
+     * wrapped into an execution trace (and hence, automatically timed).
+     *
+     * @param point  the name of the point corresponding to the given Callable
+     * @param target the Callable to call and time
+     * @param <T>    the type parameter of the Callable's returned value
+     * @return another Callable, of the same type as the given one, ready to be executed
+     */
+    public <T> Callable<T> timeCallable(final String point, final Callable<T> target) {
+        final Trace parentTrace = parentTraceStore.get();
+        return () -> {
+            Trace trace = Profiler.lets.start(point, parentTrace);
+            T result = target.call();
+            Profiler.lets.end(trace);
+            return result;
+        };
+    }
+
+    /**
+     * Ends the currently running trace.
+     */
+    public void end() {
+        end(parentTraceStore.get());
+    }
+
+    /**
+     * Ends the given trace.
+     *
+     * @param trace the trace to end.
+     */
+    public void end(Trace trace) {
+        if (trace == null) {
+            return;
+        }
+        long currentTimestamp = System.nanoTime();
+        ExecRecord record = records.get(trace.getPoint());
+        if (record != null) {
+            record.recordExecution(currentTimestamp - trace.getStartTimestamp());
+        }
+        parentTraceStore.set(trace.getParent());
+    }
+
+    public void reset() {
+        // this might crash or the processing in some thread might crash
+        for (ExecRecord record : records.values()) {
+            record.reset();
+        }
+    }
+
+    // ----------------------------------------------------------------------------------------------------
 
     /**
      * A dictionary of {@link ExecRecord} mapped to the code points that generated them. Each item holds
@@ -61,115 +166,46 @@ public class Profiler {
     private ExecLink rootLink = new ExecLink("Root");
 
     /**
-     * A thread local that stored the currently timed {@link ExecTrace}. Helps with created aggregated
+     * A thread local that stored the currently timed {@link Trace}. Helps with created aggregated
      * executions.
      */
-    private ThreadLocal<ExecTrace> parentTraceStore = new ThreadLocal<>();
+    private ThreadLocal<Trace> parentTraceStore = new ThreadLocal<>();
+    private HttpControl httpControl;
 
     // ----------------------------------------------------------------------------------------------------
 
     public Profiler() {
         this.records = new HashMap<>();
         this.links = new HashMap<>();
+
         this.reportMonitor = new ReportMonitor();
         this.reportMonitor.init();
         this.reportMonitor.start();
-        this.reportPrinter = new ReportPrinter();
+        this.reportPrinter = new StdoutReportPrinter();
     }
 
     // ----------------------------------------------------------------------------------------------------
 
-    /**
-     * Starts a new timing for a piece of code.
-     *
-     * @param point the name of the code point. Can be any string you want, with any format. It just needs to
-     *              be unique to that code point and should stay the same if multiple threads are calling that
-     *              point.
-     * @return a trace to be used either as {@link AutoCloseable} or as a parameter to {@link #end(ExecTrace)}. Can
-     * also be ignored, because {#end(ExecTrace)} usually knows how to pick it up.
-     */
-    public ExecTrace start(String point) {
-        return start(point, parentTraceStore.get());
+    public void printReport() {
+        printReport(reportPrinter);
     }
 
-    /**
-     * Starts a new timing for a piece of code, with the name of the code point composed as the name of the
-     * currently executing trace (if any) suffixed with the given string.
-     *
-     * @param pointSuffix the suffix to add to the currently running trace, to form the name of the new trace
-     * @return a trace to be used either as {@link AutoCloseable} or as a parameter to {@link #end(ExecTrace)}. Can
-     * also be ignored, because {#end(ExecTrace)} usually knows how to pick it up.
-     */
-    public ExecTrace startWithInheritedName(String pointSuffix) {
-        ExecTrace parentTrace = parentTraceStore.get();
-        if (parentTrace != null) {
-            return start(parentTrace.getPoint() + (pointSuffix.startsWith(".") ? "" : ".") + pointSuffix);
-        } else {
-            return start("INHERITED_TRACE_NOT_AVAILABLE." + pointSuffix);
-        }
+    public void printReport(ReportPrinter printer) {
+        int maxLineLength = calculateMaxLineLength(rootLink, 0) + 4;
+        printReportInternal(rootLink, 0, maxLineLength, printer);
     }
 
-    /**
-     * Creates a {@link Callable} decorator, so that when the given Callable is executed, it is automatically
-     * wrapped into an execution trace (and hence, automatically timed).
-     *
-     * @param point  the name of the point corresponding to the given Callable
-     * @param target the Callable to call and time
-     * @param <T>    the type parameter of the Callable's returned value
-     * @return another Callable, of the same type as the given one, ready to be executed
-     */
-    public <T> Callable<T> timeCallable(final String point, final Callable<T> target) {
-        final ExecTrace parentTrace = parentTraceStore.get();
-        return () -> {
-            ExecTrace trace = Profiler.lets.start(point, parentTrace);
-            T result = target.call();
-            Profiler.lets.end(trace);
-            return result;
-        };
-    }
-
-    /**
-     * Ends the currently running trace.
-     */
-    public void end() {
-        end(parentTraceStore.get());
-    }
-
-    /**
-     * Ends the given trace.
-     *
-     * @param trace the trace to end.
-     */
-    public void end(ExecTrace trace) {
-        if (trace == null) {
-            return;
-        }
-        long currentTimestamp = System.nanoTime();
-        ExecRecord record = records.get(trace.getPoint());
-        if (record != null) {
-            record.incrementNrOfRuns();
-            record.addToTotalRunTime(currentTimestamp - trace.getStartTimestamp());
-        }
-        parentTraceStore.set(trace.getParent());
-    }
-
-    // ----------------------------------------------------------------------------------------------------
-
-    void printReport() {
-        printReportInternal(rootLink, 0);
-    }
-
-    long getLastRecordedTimestamp() {
+    public long getLastRecordedTimestamp() {
         return lastRecordedTimestamp;
     }
 
-    void resetLastRecordedTimestamp() {
+    public void resetLastRecordedTimestamp() {
         this.lastRecordedTimestamp = Long.MAX_VALUE;
     }
 
     // ----------------------------------------------------------------------------------------------------
 
-    private ExecTrace start(String point, ExecTrace parentTrace) {
+    private Trace start(String point, Trace parentTrace) {
         ExecLink parentLink = rootLink;
         if (parentTrace != null) {
             parentLink = parentTrace.getLink();
@@ -202,32 +238,45 @@ public class Profiler {
         }
 
         long currentTimestamp = System.nanoTime();
-        ExecTrace thisTrace = new ExecTrace(point, currentTimestamp, parentTrace, link);
+        Trace thisTrace = new Trace(point, currentTimestamp, parentTrace, link);
         parentTraceStore.set(thisTrace);
         lastRecordedTimestamp = currentTimestamp;
         return thisTrace;
     }
 
-    private void printReportInternal(ExecLink link, int depth) {
+    private void printReportInternal(ExecLink link, int depth, int maxLineLength, ReportPrinter printer) {
         if (depth > 0) {
             ExecRecord record = records.get(link.getPoint());
+            int indent = calculateReportLineIndent(depth);
             if (record != null) {
-                int nrOfRuns = record.getNrOfRuns();
+                long nrOfRuns = record.getNrOfRuns();
                 long averageRunTime = 0;
                 if (nrOfRuns > 0) {
                     averageRunTime = record.getTotalRunTime() / nrOfRuns / 1000000; // nanos to millis
                 }
-                reportPrinter.printReportLine("Profiler: %" + (depth * 4) + "s %-" + (180 - depth * 4) + "s: runs:%6d, avgRunTime: %8d ms",
-                                              " ", link.getPoint(), nrOfRuns, averageRunTime);
+                printer.printReportLine("Profiler: %" + indent + "s %-" + (maxLineLength - indent) + "s: runs:%6d, avgRunTime: %8d ms",
+                                        " ", link.getPoint(), nrOfRuns, averageRunTime);
             } else {
-                reportPrinter.printReportLine("Profiler: %" + (depth * 4) + "s %-" + (180 - depth * 4) + "s: null",
-                                              " ", link.getPoint());
+                printer.printReportLine("Profiler: %" + indent + "s %-" + (maxLineLength - indent) + "s: null",
+                                        " ", link.getPoint());
             }
         }
 
         for (ExecLink currentChild : link.getChildren()) {
-            printReportInternal(currentChild, depth + 1);
+            printReportInternal(currentChild, depth + 1, maxLineLength, printer);
         }
+    }
+
+    private int calculateMaxLineLength(ExecLink link, int depth) {
+        int localMax = calculateReportLineIndent(depth) + link.getPoint().length();
+        for (ExecLink currentChild : link.getChildren()) {
+            localMax = Math.max(localMax, calculateMaxLineLength(currentChild, depth + 1));
+        }
+        return localMax;
+    }
+
+    private int calculateReportLineIndent(int depth) {
+        return (depth - 1) * 4 + 1;
     }
 
     // ----------------------------------------------------------------------------------------------------

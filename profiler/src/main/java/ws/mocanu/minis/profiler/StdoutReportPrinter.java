@@ -16,11 +16,15 @@ limitations under the License.
 
 package ws.mocanu.minis.profiler;
 
-/**
- * A printer for each profiler report line.
- */
-public interface ReportPrinter {
+import ws.mocanu.minis.profiler.ReportPrinter;
 
-    void printReportLine(String format, Object... args);
+/**
+ * An report printer that prints to STDOUT.
+ */
+public class StdoutReportPrinter implements ReportPrinter {
+
+    public void printReportLine(String format, Object... args) {
+        System.out.println(String.format(format, (Object[]) args));
+    }
 
 }

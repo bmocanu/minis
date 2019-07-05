@@ -20,11 +20,11 @@ package ws.mocanu.minis.profiler;
  * A simple thread that monitors {@link Profiler}'s last execution timestamp and, when this timestamp gets
  * a bit old (e.g. 10 seconds) triggers the printing of the profiler's report.
  */
-class ReportMonitor extends Thread {
+public class ReportMonitor extends Thread {
 
     private boolean keepRunning = true;
 
-    void init() {
+    public void init() {
         this.setDaemon(true);
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             ReportMonitor.this.prepareToStop();

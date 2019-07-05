@@ -20,14 +20,14 @@ package ws.mocanu.minis.profiler;
  * An execution trace maps the details of a particular code execution. Such traces are stored in a
  * {@link ThreadLocal} to allow for trace aggregation and "stack" unwinding.
  */
-public class ExecTrace implements AutoCloseable {
+public class Trace implements AutoCloseable {
 
     private String point;
     private long startTimestamp;
-    private ExecTrace parent;
+    private Trace parent;
     private ExecLink link;
 
-    ExecTrace(String point, long startTimestamp, ExecTrace parent, ExecLink link) {
+    Trace(String point, long startTimestamp, Trace parent, ExecLink link) {
         this.point = point;
         this.startTimestamp = startTimestamp;
         this.parent = parent;
@@ -42,7 +42,7 @@ public class ExecTrace implements AutoCloseable {
         return startTimestamp;
     }
 
-    ExecTrace getParent() {
+    Trace getParent() {
         return parent;
     }
 

@@ -25,12 +25,12 @@ import java.util.Set;
  * A link from a code execution tree. During a profiling session, several of these links are created and
  * aggregated into a tree, which is later traversed in order to print a beautiful report.
  */
-class ExecLink {
+public class ExecLink {
 
     private String point;
     private Set<ExecLink> children;
 
-    ExecLink(String point) {
+    public ExecLink(String point) {
         this.point = point;
         this.children = Collections.synchronizedSet(new LinkedHashSet<>());
     }

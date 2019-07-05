@@ -16,42 +16,43 @@ limitations under the License.
 
 package ws.mocanu.minis.profiler;
 
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
 
 /**
  * A record of a how many times and for how long a particular code point was executed.
  */
-class ExecRecord {
+public class ExecRecord {
 
     /**
      * The number of times a code point was executed.
      */
-    private AtomicInteger nrOfRuns = new AtomicInteger(0);
+    private LongAdder nrOfRuns = new LongAdder();
 
     /**
      * The sum of the duration (in nanoseconds) of each execution of a code point.
      */
-    private AtomicLong totalRunTime = new AtomicLong(0);
+    private LongAdder totalRunTime = new LongAdder();
 
     // ----------------------------------------------------------------------------------------------------
 
-    void incrementNrOfRuns() {
-        nrOfRuns.incrementAndGet();
+    public void recordExecution(long executionTime) {
+        nrOfRuns.increment();
+        totalRunTime.add(executionTime);
     }
 
-    void addToTotalRunTime(long time) {
-        totalRunTime.addAndGet(time);
+    public void reset() {
+        nrOfRuns.reset();
+        totalRunTime.reset();
     }
 
     // ----------------------------------------------------------------------------------------------------
 
-    int getNrOfRuns() {
-        return nrOfRuns.get();
+    public long getNrOfRuns() {
+        return nrOfRuns.longValue();
     }
 
-    long getTotalRunTime() {
-        return totalRunTime.get();
+    public long getTotalRunTime() {
+        return totalRunTime.longValue();
     }
 
 }
