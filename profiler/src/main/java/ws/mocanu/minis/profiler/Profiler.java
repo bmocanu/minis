@@ -254,10 +254,11 @@ public class Profiler {
                 if (nrOfRuns > 0) {
                     averageRunTime = record.getTotalRunTime() / nrOfRuns / 1000000; // nanos to millis
                 }
-                printer.printReportLine("Profiler: %" + indent + "s %-" + (maxLineLength - indent) + "s: runs:%6d, avgRunTime: %8d ms",
-                                        " ", link.getPoint(), nrOfRuns, averageRunTime);
+                long averageOnLastTen = record.getSumForLastNExecutions() / 10 / 1000000; // nanos to millis
+                printer.printReportLine("Profiler| %" + indent + "s %-" + (maxLineLength - indent) + "s| runs:%6d | avgRunTime: %8d ms | avgOnLast10: %8d ms",
+                                        " ", link.getPoint(), nrOfRuns, averageRunTime, averageOnLastTen);
             } else {
-                printer.printReportLine("Profiler: %" + indent + "s %-" + (maxLineLength - indent) + "s: null",
+                printer.printReportLine("Profiler| %" + indent + "s %-" + (maxLineLength - indent) + "s| null",
                                         " ", link.getPoint());
             }
         }

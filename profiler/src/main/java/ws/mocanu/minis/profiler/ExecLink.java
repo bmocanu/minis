@@ -27,8 +27,8 @@ import java.util.Set;
  */
 public class ExecLink {
 
-    private String point;
-    private Set<ExecLink> children;
+    private final String point;
+    private final Set<ExecLink> children;
 
     public ExecLink(String point) {
         this.point = point;

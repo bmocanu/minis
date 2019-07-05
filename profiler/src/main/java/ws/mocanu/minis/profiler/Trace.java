@@ -22,10 +22,10 @@ package ws.mocanu.minis.profiler;
  */
 public class Trace implements AutoCloseable {
 
-    private String point;
-    private long startTimestamp;
-    private Trace parent;
-    private ExecLink link;
+    private final String point;
+    private final long startTimestamp;
+    private final Trace parent;
+    private final ExecLink link;
 
     Trace(String point, long startTimestamp, Trace parent, ExecLink link) {
         this.point = point;

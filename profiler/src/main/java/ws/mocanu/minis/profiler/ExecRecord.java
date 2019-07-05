@@ -26,18 +26,30 @@ public class ExecRecord {
     /**
      * The number of times a code point was executed.
      */
-    private LongAdder nrOfRuns = new LongAdder();
+    private final LongAdder nrOfRuns = new LongAdder();
 
     /**
      * The sum of the duration (in nanoseconds) of each execution of a code point.
      */
-    private LongAdder totalRunTime = new LongAdder();
+    private final LongAdder totalRunTime = new LongAdder();
+
+    private final long[] lastExecutions = new long[10];
+
+    private int lastExecutionCursor = 0;
 
     // ----------------------------------------------------------------------------------------------------
 
     public void recordExecution(long executionTime) {
         nrOfRuns.increment();
         totalRunTime.add(executionTime);
+
+        synchronized (lastExecutions) {
+            lastExecutionCursor++;
+            if (lastExecutionCursor >= lastExecutions.length) {
+                lastExecutionCursor = lastExecutionCursor % lastExecutions.length;
+            }
+            lastExecutions[lastExecutionCursor] = executionTime;
+        }
     }
 
     public void reset() {
@@ -53,6 +65,14 @@ public class ExecRecord {
 
     public long getTotalRunTime() {
         return totalRunTime.longValue();
+    }
+
+    public long getSumForLastNExecutions() {
+        long sum = 0;
+        for (int index = 0; index < lastExecutions.length; index++) {
+            sum += lastExecutions[index];
+        }
+        return sum;
     }
 
 }
